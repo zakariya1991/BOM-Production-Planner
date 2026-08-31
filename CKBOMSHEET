@@ -17,4 +17,286 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 .actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.muted{color:#6b7280;font-size:12px}
 .tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px}th,td{border:1px solid #d4d9de;padding:8px;font-size:13px}th{background:#dcefd5;text-transform:uppercase;font-size:11px}td.num{text-align:right}
 .badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#eef7f1;color:#166534;font-size:11px;font-weight:bold}
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{padding:14px;border:1px solid #d9dee3;border-radius:9px;background:#fff}.stat small{color:#6b7280}.stat b{display:block;font-size:20px;margin-top:4p
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{padding:14px;border:1px solid #d9dee3;border-radius:9px;background:#fff}.stat small{color:#6b7280}.stat b{display:block;font-size:20px;margin-top:4px}
+.item-row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end}.bom-row{display:grid;grid-template-columns:2fr .7fr .9fr .9fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:end}
+.subbox{border-left:4px solid #166534;background:#f6faf7;padding:14px;margin:12px 0;border-radius:7px}
+.notice{background:#fff7ed;border:1px solid #fed7aa;padding:10px;border-radius:7px;font-size:12px;margin-bottom:12px}
+.empty{text-align:center;padding:35px;color:#6b7280}.toast{position:fixed;bottom:18px;right:18px;background:#111827;color:#fff;padding:12px 16px;border-radius:8px;display:none}
+@media(max-width:900px){.grid,.summary{grid-template-columns:1fr 1fr}.item-row,.bom-row{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.grid,.summary{grid-template-columns:1fr}header{padding:15px}main{padding:0 9px}.card{padding:13px}}
+@media print{nav,header,.screenhide{display:none!important}main{margin:0;padding:0}.page{display:none!important}#production.active{display:block!important}.card{border:0;box-shadow:none}}
+.syncbar{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:12px;text-align:center;color:#fff;z-index:50;display:none}
+.syncbar.online{background:#166534}.syncbar.offline{background:#991b1b}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+<div class="syncbar" id="syncbar"></div>
+<header>
+<h1>Central Kitchen — BOM & Production Planner</h1>
+<p>Pre-built BOM • RM + CS sub-recipe • Multi-level calculation • Production sheet</p>
+</header>
+
+<nav>
+<button class="active" onclick="showPage('production',this)">Production Plan</button>
+<button onclick="showPage('items',this)">Item Master</button>
+<button onclick="showPage('bom',this)">BOM Master</button>
+<button onclick="showPage('cs',this)">CS / Sub-Recipe</button>
+</nav>
+
+<main>
+<section id="production" class="page active">
+<div class="card screenhide">
+<h2>Production Plan</h2>
+<div class="grid">
+<div><label>FINISHED SKU</label><select id="prodSku"></select></div>
+<div><label>PRODUCTION QTY</label><input id="prodQty" type="number" min="0" step=".001" placeholder="Example: 90"></div>
+<div><label>PRODUCTION DATE</label><input id="prodDate" type="date"></div>
+<div class="actions"><button class="btn green" onclick="generate()">GENERATE BOM</button><button class="btn gray" onclick="window.print()">PRINT / PDF</button></div>
+</div>
+<p class="muted">For normal use: select the SKU and enter only the required production quantity.</p>
+</div>
+
+<div class="summary">
+<div class="stat"><small>Product</small><b id="sumProduct">—</b></div>
+<div class="stat"><small>Production Qty</small><b id="sumQty">—</b></div>
+<div class="stat"><small>RM / CS Lines</small><b id="sumLines">—</b></div>
+<div class="stat"><small>Total Cost</small><b id="sumCost">₹0.00</b></div>
+</div>
+
+<div class="card">
+<div id="printTitle"></div>
+<div id="productionResult" class="empty">Generate a production BOM to see the complete RM + CS requirement.</div>
+</div>
+</section>
+
+<section id="items" class="page">
+<div class="card">
+<h2>Add / Manage Item</h2>
+<div class="grid">
+<div><label>ITEM CODE</label><input id="itemCode" placeholder="RM001 / CS001 / FG001"></div>
+<div><label>ITEM NAME</label><input id="itemName" placeholder="Example: Mango Pulp"></div>
+<div><label>ITEM TYPE</label><select id="itemType"><option value="RM">RM - Raw Material</option><option value="CS">CS - Sub Recipe</option><option value="FG">FG - Finished SKU</option><option value="PKG">Packaging</option></select></div>
+<div><label>UOM</label><input id="itemUom" placeholder="kg / pcs / ltr"></div>
+</div>
+br
+<div class="actions" style="margin-top:12px"><button class="btn green" onclick="addItem()">ADD ITEM</button><button class="btn gray" onclick="clearItem()">CLEAR</button></div>
+</div>
+<div class="card"><h2>Item Master</h2><div id="itemTable"></div></div>
+</section>
+
+<section id="bom" class="page">
+<div class="card">
+<h2>Finished SKU BOM</h2>
+<div class="grid">
+<div><label>SELECT FINISHED SKU</label><select id="bomSku" onchange="renderBomEditor()"></select></div>
+<div><label>STANDARD OUTPUT</label><input id="bomOutput" type="number" value="1" step=".001"></div>
+<div><label>OUTPUT UOM</label><input id="bomOutputUom" value="kg"></div>
+<div class="actions"><button class="btn green" onclick="saveBom()">SAVE BOM</button></div>
+</div>
+<p class="muted">Add RM, CS or Packaging components. A CS component automatically connects to its own sub-recipe.</p>
+</div>
+<div class="card">
+<div id="bomEditor"></div>
+<button class="btn gray" onclick="addBomRow()">＋ Add Component</button>
+</div>
+</section>
+
+<section id="cs" class="page">
+<div class="card">
+<h2>CS — Central Kitchen Sub-Recipe</h2>
+<div class="notice">Create a CS item first in Item Master. Example: <b>CS - Mango Lassi</b>, UOM <b>Kg</b>. Then build its own ingredient BOM here.</div>
+<div class="grid">
+<div><label>SELECT CS</label><select id="csSelect" onchange="renderCsEditor()"></select></div>
+<div><label>STANDARD CS OUTPUT</label><input id="csOutput" type="number" value="1" step=".001"></div>
+<div><label>OUTPUT UOM</label><input id="csOutputUom" value="kg"></div>
+<div class="actions"><button class="btn green" onclick="saveCs()">SAVE CS BOM</button></div>
+</div>
+</div>
+<div class="card">
+<div id="csEditor"></div>
+<button class="btn gray" onclick="addCsRow()">＋ Add Ingredient</button>
+</div>
+</section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================
+   DATA
+   ========================= */
+const state={
+ items:{
+  RM001:{name:"Thick Curd (Lassi)",type:"RM",uom:"kg"},
+  RM002:{name:"Mango Pulp",type:"RM",uom:"kg"},
+  RM003:{name:"Icing Sugar",type:"RM",uom:"kg"},
+  PKG001:{name:"Juice Bottle 300 ml",type:"PKG",uom:"pcs"},
+  CS001:{name:"CS - Mango Lassi",type:"CS",uom:"kg"},
+  FG001:{name:"Mango Lassi",type:"FG",uom:"pcs"}
+ },
+ boms:{
+  FG001:{output:1,uom:"pcs",rows:[
+   {item:"CS001",qty:.300,netQty:.300,cost:43.74},
+   {item:"PKG001",qty:1,netQty:1,cost:7.99}
+  ]}
+ },
+ csBoms:{
+  CS001:{output:1,uom:"kg",rows:[
+   {item:"RM001",qty:.526,netQty:.526,cost:35.26},
+   {item:"RM002",qty:.408,netQty:.408,cost:103.30},
+   {item:"RM003",qty:.099,netQty:.099,cost:7.25}
+  ]}
+ }
+};
+let bomRows=[],csRows=[],generated=null;
+
+const firebaseConfig={
+ apiKey:"AIzaSyDYSamSH5v9VUMHp6zLaniHZ0lNaBxi0Gk",
+ authDomain:"ckbom-9898.firebaseapp.com",
+ databaseURL:"https://ckbom-9898-default-rtdb.firebaseio.com",
+ projectId:"ckbom-9898",
+ storageBucket:"ckbom-9898.firebasestorage.app",
+ messagingSenderId:"520707570558",
+ appId:"1:520707570558:web:b3259d7c4c30693a67112f"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+const stateRef=db.ref("ckBomState");
+let applyingRemote=false;
+
+function saveLocal(){
+ if(applyingRemote)return;
+ stateRef.set(state).catch(e=>{console.error(e);showSync(false)});
+}
+function showSync(ok){
+ const b=document.getElementById("syncbar");
+ b.style.display="block";b.className="syncbar "+(ok?"online":"offline");
+ b.textContent=ok?"Synced — connected to team database":"Offline — changes will sync once reconnected";
+ if(ok)setTimeout(()=>{b.style.display="none"},1800);
+}
+function listenRemote(){
+ stateRef.on("value",snap=>{
+  const x=snap.val();
+  if(!x){
+   stateRef.set(state);
+   return;
+  }
+  applyingRemote=true;
+  state.items=x.items||state.items;
+  state.boms=x.boms||state.boms;
+  state.csBoms=x.csBoms||state.csBoms;
+  refreshSelects();renderItems();renderBomEditor();renderCsEditor();
+  applyingRemote=false;
+  showSync(true);
+ },err=>{console.error(err);showSync(false)});
+}
+function init(){
+ document.getElementById("prodDate").value=new Date().toISOString().slice(0,10);
+ refreshSelects();renderItems();renderBomEditor();renderCsEditor();
+ listenRemote();
+}
+function refreshSelects(){
+ const fg=document.getElementById("prodSku"),bs=document.getElementById("bomSku"),cs=document.getElementById("csSelect");
+ fg.innerHTML="";bs.innerHTML="";cs.innerHTML="";
+ Object.entries(state.items).forEach(([id,x])=>{
+  if(x.type==="FG"){fg.add(new Option(`${id} — ${x.name}`,id));bs.add(new Option(`${id} — ${x.name}`,id))}
+  if(x.type==="CS")cs.add(new Option(`${id} — ${x.name}`,id));
+ });
+}
+function showPage(id,btn){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(id==="bom")renderBomEditor();if(id==="cs")renderCsEditor()}
+function addItem(){
+ const id=document.getElementById("itemCode").value.trim(),name=document.getElementById("itemName").value.trim(),type=document.getElementById("itemType").value,uom=document.getElementById("itemUom").value.trim();
+ if(!id||!name||!uom){toast("Enter code, name and UOM.");return}
+ if(state.items[id]){toast("Item code already exists.");return}
+ state.items[id]={name,type,uom};if(type==="FG")state.boms[id]={output:1,uom,rows:[]};if(type==="CS")state.csBoms[id]={output:1,uom,rows:[]};
+ saveLocal();refreshSelects();renderItems();clearItem();toast("Item added successfully.");
+}
+function clearItem(){["itemCode","itemName","itemUom"].forEach(id=>document.getElementById(id).value="")}
+function renderItems(){
+ let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th></tr>";
+ Object.entries(state.items).forEach(([id,x])=>h+=`<tr><td>${esc(id)}</td><td>${esc(x.name)}</td><td><span class='badge'>${esc(x.type)}</span></td><td>${esc(x.uom)}</td></tr>`);
+ h+="</table></div>";document.getElementById("itemTable").innerHTML=h;
+}
+function itemOptions(allowed){
+ return Object.entries(state.items).filter(([id,x])=>allowed.includes(x.type)).map(([id,x])=>`<option value="${id}">${esc(id)} — ${esc(x.name)}</option>`).join("");
+}
+function renderBomEditor(){
+ const id=document.getElementById("bomSku").value;if(!id){document.getElementById("bomEditor").innerHTML="<div class='empty'>Add an FG item first.</div>";return}
+ const b=state.boms[id]||{output:1,uom:state.items[id].uom,rows:[]};document.getElementById("bomOutput").value=b.output;document.getElementById("bomOutputUom").value=b.uom;bomRows=JSON.parse(JSON.stringify(b.rows||[]));
+ drawBomRows();
+}
+function drawBomRows(){
+ if(!bomRows.length){document.getElementById("bomEditor").innerHTML="<div class='empty'>No components yet. Click Add Component.</div>";return}
+ let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>COMPONENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST</div><div></div></div>";
+ bomRows.forEach((r,i)=>{const x=state.items[r.item]||{};h+=`<div class='bom-row'>
+ <select onchange="bomRows[${i}].item=this.value;drawBomRows()">${itemOptions(["RM","CS","PKG"])}</select>
+ <input value="${esc(x.uom||"")}" readonly>
+ <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="bomRows[${i}].netQty=Number(this.value)">
+ <input type="number" step=".001" value="${r.qty??0}" onchange="bomRows[${i}].qty=Number(this.value)">
+ <input type="number" step=".01" value="${r.cost??0}" onchange="bomRows[${i}].cost=Number(this.value)">
+ <button class="btn red" onclick="bomRows.splice(${i},1);drawBomRows()">✕</button></div>`});
+ document.getElementById("bomEditor").innerHTML=h;
+ bomRows.forEach((r,i)=>{const sels=document.querySelectorAll("#bomEditor select");if(sels[i])sels[i].value=r.item});
+}
+function addBomRow(){bomRows.push({item:Object.keys(state.items).find(id=>["RM","CS","PKG"].includes(state.items[id].type))||"",qty:0,netQty:0,cost:0});drawBomRows()}
+function saveBom(){
+ const id=document.getElementById("bomSku").value;if(!id)return;state.boms[id]={output:Number(document.getElementById("bomOutput").value)||1,uom:document.getElementById("bomOutputUom").value||state.items[id].uom,rows:bomRows};saveLocal();toast("Finished SKU BOM saved.");
+}
+function renderCsEditor(){
+ const id=document.getElementById("csSelect").value;if(!id){document.getElementById("csEditor").innerHTML="<div class='empty'>Add a CS item first.</div>";return}
+ const b=state.csBoms[id]||{output:1,uom:"kg",rows:[]};document.getElementById("csOutput").value=b.output;document.getElementById("csOutputUom").value=b.uom;csRows=JSON.parse(JSON.stringify(b.rows||[]));drawCsRows();
+}
+function drawCsRows(){
+ if(!csRows.length){document.getElementById("csEditor").innerHTML="<div class='empty'>No CS ingredients yet. Click Add Ingredient.</div>";return}
+ let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>INGREDIENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST</div><div></div></div>";
+ csRows.forEach((r,i)=>{const x=state.items[r.item]||{};h+=`<div class='bom-row'>
+ <select onchange="csRows[${i}].item=this.value;drawCsRows()">${itemOptions(["RM","PKG"])}</select>
+ <input value="${esc(x.uom||"")}" readonly>
+ <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="csRows[${i}].netQty=Number(this.value)">
+ <input type="number" step=".001" value="${r.qty??0}" onchange="csRows[${i}].qty=Number(this.value)">
+ <input type="number" step=".01" value="${r.cost??0}" onchange="csRows[${i}].cost=Number(this.value)">
+ <button class="btn red" onclick="csRows.splice(${i},1);drawCsRows()">✕</button></div>`});
+ document.getElementById("csEditor").innerHTML=h;csRows.forEach((r,i)=>{const sels=document.querySelectorAll("#csEditor select");if(sels[i])sels[i].value=r.item});
+}
+function addCsRow(){csRows.push({item:Object.keys(state.items).find(id=>state.items[id].type==="RM")||"",qty:0,netQty:0,cost:0});drawCsRows()}
+function saveCs(){
+ const id=document.getElementById("csSelect").value;if(!id)return;state.csBoms[id]={output:Number(document.getElementById("csOutput").value)||1,uom:document.getElementById("csOutputUom").value||"kg",rows:csRows};saveLocal();toast("CS sub-recipe saved.");
+}
+function generate(){
+ const id=document.getElementById("prodSku").value,q=Number(document.getElementById("prodQty").value),date=document.getElementById("prodDate").value;
+ if(!q||q<=0){toast("Enter production quantity.");return}
+ const fg=state.items[id],b=state.boms[id];if(!b){toast("BOM not found.");return}
+ const flat=[],csSections=[];
+ b.rows.forEach(r=>{
+  const x=state.items[r.item];const factor=q/b.output;const req=(r.qty||0)*factor;const cost=(r.cost||0)*factor;
+  if(x&&x.type==="CS"){
+   flat.push({item:r.item,name:x.name,type:"CS",uom:x.uom,qty:req,cost});
+   const cb=state.csBoms[r.item];if(cb){
+    const factorCS=req/cb.output;const rows=cb.rows.map(cr=>({item:cr.item,name:state.items[cr.item]?.name||cr.item,uom:state.items[cr.item]?.uom||"",qty:(cr.qty||0)*factorCS,cost:(cr.cost||0)*factorCS}));
+    csSections.push({name:x.name,qty:req,uom:x.uom,rows});
+   }
+  }else flat.push({item:r.item,name:x?.name||r.item,type:x?.type||"",uom:x?.uom||"",qty:req,cost});
+ });
+ const total=flat.reduce((s,r)=>s+r.cost,0)+csSections.reduce((s,c)=>s+c.rows.reduce((a,r)=>a+r.cost,0),0);
+ generated={fg,date,q,flat,csSections,total};
+ document.getElementById("sumProduct").textContent=fg.name;document.getElementById("sumQty").textContent=`${fmt(q)} ${fg.uom}`;document.getElementById("sumLines").textContent=flat.length;document.getElementById("sumCost").textContent="₹"+total.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+ let h=`<div style="text-align:center;margin-bottom:15px"><h2 style="margin:0">CENTRAL KITCHEN — PRODUCTION BOM SHEET</h2><p>${esc(fg.name)} | Production Qty: <b>${fmt(q)} ${esc(fg.uom)}</b> | Date: ${esc(date)}</p></div>`;
+ h+="<h3>Final SKU Components</h3>"+makeTable(flat,true);
+ csSections.forEach(c=>{h+=`<div class='subbox'><h3 style='margin-top:0'>CS PRODUCTION — ${esc(c.name)}</h3><p>Required CS: <b>${fmt(c.qty)} ${esc(c.uom)}</b></p>${makeTable(c.rows,false)}</div>`});
+ h+=`<div style="margin-top:35px;display:grid;grid-template-columns:repeat(3,1fr);gap:25px;font-size:12px"><div>Prepared By:<br><br>______________</div><div>Production Incharge:<br><br>______________</div><div>Checked By:<br><br>______________</div></div>`;
+ document.getElementById("productionResult").innerHTML=h;
+}
+function makeTable(rows,showType){
+ let h="<div class='tablewrap'><table><tr><th>#</th><th>ITEM / INGREDIENT</th>"+(showType?"<th>TYPE</th>":"")+"<th>UOM</th><th>REQUIRED QTY</th><th>COST</th></tr>";
+ rows.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td>${esc(r.name)}</td>${showType?`<td><span class='badge'>${esc(r.type)}</span></td>`:""}<td>${esc(r.uom)}</td><td class='num'><b>${fmt(r.qty)}</b></td><td class='num'>₹${Number(r.cost||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`);
+ h+="</table></div>";return h;
+}
+function fmt(n){return Number(n).toLocaleString("en-IN",{minimumFractionDigits:3,maximumFractionDigits:3})}
+function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",2200)}
+init();
+</script>
+</body>
+</html>

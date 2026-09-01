@@ -417,6 +417,10 @@ function importItemsCSV(){
 function itemOptions(allowed){
  return Object.entries(state.items).filter(([id,x])=>allowed.includes(x.type)).map(([id,x])=>`<option value="${id}">${esc(id)} — ${esc(x.name)}</option>`).join("");
 }
+function itemLabel(id){const x=state.items[id];return x?`${id} — ${x.name}`:""}
+function itemDatalistOptions(allowed){
+ return Object.entries(state.items).filter(([id,x])=>allowed.includes(x.type)).map(([id,x])=>`<option value="${esc(id)} — ${esc(x.name)}">`).join("");
+}
 function renderBomEditor(){
  const id=document.getElementById("bomSku").value;if(!id){document.getElementById("bomEditor").innerHTML="<div class='empty'>Add an FG item first.</div>";return}
  const b=state.boms[id]||{output:1,uom:state.items[id].uom,rows:[]};document.getElementById("bomOutput").value=b.output;document.getElementById("bomOutputUom").value=b.uom;bomRows=JSON.parse(JSON.stringify(b.rows||[]));
@@ -424,32 +428,40 @@ function renderBomEditor(){
 }
 function drawBomRows(){
  if(!bomRows.length){document.getElementById("bomEditor").innerHTML="<div class='empty'>No components yet. Click Add Component.</div>";return}
- let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>COMPONENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
+ let h=`<datalist id="bomItemsDatalist">${itemDatalistOptions(["RM","CS","PKG"])}</datalist>`;
+ h+="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>COMPONENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
  bomRows.forEach((r,i)=>{
   const x=state.items[r.item]||{};
   const rowCost=itemUnitCost(r.item)*(r.qty||0);
   r.cost=rowCost;
   h+=`<div class='bom-row'>
- <select onchange="bomRows[${i}].item=this.value;drawBomRows()">${itemOptions(["RM","CS","PKG"])}</select>
- <input value="${esc(x.uom||"")}" readonly>
+ <input list="bomItemsDatalist" value="${esc(itemLabel(r.item))}" placeholder="Type to search item…" oninput="onBomItemInput(${i},this.value)">
+ <input id="bomUom_${i}" value="${esc(x.uom||"")}" readonly>
  <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="bomRows[${i}].netQty=Number(this.value);updateBomCost(${i})">
  <input type="number" step=".001" value="${r.qty??0}" onchange="bomRows[${i}].qty=Number(this.value);updateBomCost(${i})">
  <input id="bomCost_${i}" type="number" step=".01" value="${rowCost.toFixed(2)}" readonly style="background:#f3f4f6">
  <button class="btn red" onclick="deleteBomRow(${i})">✕</button></div>`});
  document.getElementById("bomEditor").innerHTML=h;
- bomRows.forEach((r,i)=>{const sels=document.querySelectorAll("#bomEditor select");if(sels[i])sels[i].value=r.item});
+}
+function onBomItemInput(i,val){
+ const id=val.split(" — ")[0].trim();
+ if(!state.items[id])return;
+ bomRows[i].item=id;
+ const uomEl=document.getElementById("bomUom_"+i);if(uomEl)uomEl.value=state.items[id].uom||"";
+ updateBomCost(i);
 }
 function updateBomCost(i){
  const r=bomRows[i];const c=itemUnitCost(r.item)*(r.qty||0);r.cost=c;
  const el=document.getElementById("bomCost_"+i);if(el)el.value=c.toFixed(2);
 }
-function addBomRow(){bomRows.push({item:Object.keys(state.items).find(id=>["RM","CS","PKG"].includes(state.items[id].type))||"",qty:0,netQty:0,cost:0});drawBomRows()}
+function addBomRow(){bomRows.push({item:"",qty:0,netQty:0,cost:0});drawBomRows()}
 function deleteBomRow(i){
  if(!checkPassword("remove this component"))return;
  bomRows.splice(i,1);drawBomRows();
 }
 function saveBom(){
  const id=document.getElementById("bomSku").value;if(!id)return;
+ if(bomRows.some(r=>!r.item||!state.items[r.item])){toast("Every row needs a valid component — pick one from the search dropdown.");return}
  if(!checkPassword("save this BOM"))return;
  state.boms[id]={output:Number(document.getElementById("bomOutput").value)||1,uom:document.getElementById("bomOutputUom").value||state.items[id].uom,rows:bomRows};saveLocal();toast("Finished SKU BOM saved.");
 }
@@ -466,31 +478,40 @@ function renderCsEditor(){
 }
 function drawCsRows(){
  if(!csRows.length){document.getElementById("csEditor").innerHTML="<div class='empty'>No CS ingredients yet. Click Add Ingredient.</div>";return}
- let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>INGREDIENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
+ let h=`<datalist id="csItemsDatalist">${itemDatalistOptions(["RM","PKG"])}</datalist>`;
+ h+="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>INGREDIENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
  csRows.forEach((r,i)=>{
   const x=state.items[r.item]||{};
   const rowCost=itemUnitCost(r.item)*(r.qty||0);
   r.cost=rowCost;
   h+=`<div class='bom-row'>
- <select onchange="csRows[${i}].item=this.value;drawCsRows()">${itemOptions(["RM","PKG"])}</select>
- <input value="${esc(x.uom||"")}" readonly>
+ <input list="csItemsDatalist" value="${esc(itemLabel(r.item))}" placeholder="Type to search ingredient…" oninput="onCsItemInput(${i},this.value)">
+ <input id="csUom_${i}" value="${esc(x.uom||"")}" readonly>
  <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="csRows[${i}].netQty=Number(this.value);updateCsCost(${i})">
  <input type="number" step=".001" value="${r.qty??0}" onchange="csRows[${i}].qty=Number(this.value);updateCsCost(${i})">
  <input id="csCost_${i}" type="number" step=".01" value="${rowCost.toFixed(2)}" readonly style="background:#f3f4f6">
  <button class="btn red" onclick="deleteCsRow(${i})">✕</button></div>`});
- document.getElementById("csEditor").innerHTML=h;csRows.forEach((r,i)=>{const sels=document.querySelectorAll("#csEditor select");if(sels[i])sels[i].value=r.item});
+ document.getElementById("csEditor").innerHTML=h;
+}
+function onCsItemInput(i,val){
+ const id=val.split(" — ")[0].trim();
+ if(!state.items[id])return;
+ csRows[i].item=id;
+ const uomEl=document.getElementById("csUom_"+i);if(uomEl)uomEl.value=state.items[id].uom||"";
+ updateCsCost(i);
 }
 function updateCsCost(i){
  const r=csRows[i];const c=itemUnitCost(r.item)*(r.qty||0);r.cost=c;
  const el=document.getElementById("csCost_"+i);if(el)el.value=c.toFixed(2);
 }
-function addCsRow(){csRows.push({item:Object.keys(state.items).find(id=>state.items[id].type==="RM")||"",qty:0,netQty:0,cost:0});drawCsRows()}
+function addCsRow(){csRows.push({item:"",qty:0,netQty:0,cost:0});drawCsRows()}
 function deleteCsRow(i){
  if(!checkPassword("remove this ingredient"))return;
  csRows.splice(i,1);drawCsRows();
 }
 function saveCs(){
  const id=document.getElementById("csSelect").value;if(!id)return;
+ if(csRows.some(r=>!r.item||!state.items[r.item])){toast("Every row needs a valid ingredient — pick one from the search dropdown.");return}
  if(!checkPassword("save this CS recipe"))return;
  state.csBoms[id]={output:Number(document.getElementById("csOutput").value)||1,uom:document.getElementById("csOutputUom").value||"kg",rows:csRows};saveLocal();toast("CS sub-recipe saved.");
 }

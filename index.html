@@ -16,7 +16,7 @@ label{font-size:12px;font-weight:700;color:#000;display:block;margin-bottom:5px}
 input,select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}
 button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weight:700;cursor:pointer}.green{background:#166534;color:#fff}.gray{background:#eef2f5}.red{background:#fee2e2;color:#991b1b}
 .actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.muted{color:#000;font-size:12px}
-.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #d4d9de;padding:6px;font-size:11px;word-break:break-word;color:#000}th{background:#dcefd5;text-transform:uppercase;font-size:10px;color:#000}td.num{text-align:right}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #d4d9de;padding:6px;font-size:11px;word-break:break-word;color:#000!important;font-weight:700!important}th{background:#dcefd5;text-transform:uppercase;font-size:10px}td.num{text-align:right}
 .badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#eef7f1;color:#166534;font-size:11px;font-weight:bold}
 .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{padding:14px;border:1px solid #d9dee3;border-radius:9px;background:#fff}.stat small{color:#000}.stat b{display:block;font-size:20px;margin-top:4px}
 .item-row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:end}.bom-row{display:grid;grid-template-columns:2fr .7fr .9fr .9fr 1.2fr auto;gap:8px;margin-bottom:8px;align-items:end}
@@ -80,12 +80,14 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <section id="items" class="page">
 <div class="card">
 <h2>Add / Manage Item</h2>
-<div class="grid">
+<div class="grid" style="grid-template-columns:repeat(5,1fr)">
 <div><label>ITEM CODE</label><input id="itemCode" placeholder="RM001 / CS001 / FG001"></div>
 <div><label>ITEM NAME</label><input id="itemName" placeholder="Example: Mango Pulp"></div>
 <div><label>ITEM TYPE</label><select id="itemType"><option value="RM">RM - Raw Material</option><option value="CS">CS - Sub Recipe</option><option value="FG">FG - Finished SKU</option><option value="PKG">Packaging</option></select></div>
 <div><label>UOM</label><input id="itemUom" placeholder="kg / pcs / ltr"></div>
+<div><label>COST (PER UOM)</label><input id="itemCost" type="number" step=".01" placeholder="e.g. 45.50"></div>
 </div>
+<p class="muted" style="margin-top:8px">Cost applies to RM & Packaging items — this is what BOM/CS component costs are automatically calculated from. CS item cost is auto-calculated from its own recipe instead.</p>
 <div class="actions" style="margin-top:12px"><button class="btn green" onclick="addItem()">ADD ITEM</button><button class="btn gray" onclick="clearItem()">CLEAR</button></div>
 </div>
 <div class="card"><h2>Item Master</h2><div id="itemTable"></div></div>
@@ -141,6 +143,18 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <p class="muted">Fix spelling mistakes or update the name, type or UOM of any existing item. The item code itself cannot be changed here — delete and re-add if the code is wrong.</p>
 <div id="adminItemTable"></div>
 </div>
+<div class="card">
+<h2>Import / Export Items (CSV)</h2>
+<p class="muted">Template columns: ITEM CODE, ITEM NAME, ITEM TYPE, UOM, COST. Use this to bulk add or update items and their costs instead of typing them one by one. Existing item codes in the file will be updated; new ones will be added. Importing requires the password.</p>
+<div class="actions">
+<button class="btn gray" onclick="downloadTemplateCSV()">DOWNLOAD TEMPLATE</button>
+<button class="btn gray" onclick="exportItemsCSV()">EXPORT ALL ITEMS</button>
+</div>
+<div class="grid" style="grid-template-columns:2fr 1fr;margin-top:14px">
+<div><label>CHOOSE CSV FILE TO IMPORT</label><input type="file" id="importCsvFile" accept=".csv"></div>
+<div class="actions" style="align-items:end"><button class="btn green" onclick="importItemsCSV()">IMPORT CSV</button></div>
+</div>
+</div>
 </section>
 </main>
 
@@ -149,12 +163,12 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <script>
 const state={
  items:{
-  RM001:{name:"Thick Curd (Lassi)",type:"RM",uom:"kg"},
-  RM002:{name:"Mango Pulp",type:"RM",uom:"kg"},
-  RM003:{name:"Icing Sugar",type:"RM",uom:"kg"},
-  PKG001:{name:"Juice Bottle 300 ml",type:"PKG",uom:"pcs"},
-  CS001:{name:"CS - Mango Lassi",type:"CS",uom:"kg"},
-  FG001:{name:"Mango Lassi",type:"FG",uom:"pcs"}
+  RM001:{name:"Thick Curd (Lassi)",type:"RM",uom:"kg",cost:67.03},
+  RM002:{name:"Mango Pulp",type:"RM",uom:"kg",cost:253.19},
+  RM003:{name:"Icing Sugar",type:"RM",uom:"kg",cost:73.23},
+  PKG001:{name:"Juice Bottle 300 ml",type:"PKG",uom:"pcs",cost:7.99},
+  CS001:{name:"CS - Mango Lassi",type:"CS",uom:"kg",cost:0},
+  FG001:{name:"Mango Lassi",type:"FG",uom:"pcs",cost:0}
  },
  boms:{
   FG001:{output:1,uom:"pcs",rows:[
@@ -177,6 +191,16 @@ function checkPassword(actionLabel){
  if(p===null)return false;
  if(p!==APP_PASSWORD){alert("Incorrect password. Action cancelled.");return false}
  return true;
+}
+function itemUnitCost(id){
+ const it=state.items[id];if(!it)return 0;
+ if(it.type==="CS")return csUnitCost(id);
+ return Number(it.cost)||0;
+}
+function csUnitCost(csId){
+ const cb=state.csBoms[csId];if(!cb||!cb.rows||!cb.rows.length)return 0;
+ const total=cb.rows.reduce((s,r)=>s+itemUnitCost(r.item)*(r.qty||0),0);
+ return total/(cb.output||1);
 }
 
 const firebaseConfig={
@@ -254,30 +278,37 @@ function refreshSelects(){
 }
 function showPage(id,btn){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(id==="bom")renderBomEditor();if(id==="cs")renderCsEditor();if(id==="admin")renderAdminItems()}
 function addItem(){
- const id=document.getElementById("itemCode").value.trim(),name=document.getElementById("itemName").value.trim(),type=document.getElementById("itemType").value,uom=document.getElementById("itemUom").value.trim();
+ const id=document.getElementById("itemCode").value.trim(),name=document.getElementById("itemName").value.trim(),type=document.getElementById("itemType").value,uom=document.getElementById("itemUom").value.trim(),cost=Number(document.getElementById("itemCost").value)||0;
  if(!id||!name||!uom){toast("Enter code, name and UOM.");return}
  if(state.items[id]){toast("Item code already exists.");return}
  if(!checkPassword("add this item"))return;
- state.items[id]={name,type,uom};if(type==="FG")state.boms[id]={output:1,uom,rows:[]};if(type==="CS")state.csBoms[id]={output:1,uom,rows:[]};
+ state.items[id]={name,type,uom,cost};if(type==="FG")state.boms[id]={output:1,uom,rows:[]};if(type==="CS")state.csBoms[id]={output:1,uom,rows:[]};
  saveLocal();refreshSelects();renderItems();renderAdminItems();clearItem();toast("Item added successfully.");
 }
-function clearItem(){["itemCode","itemName","itemUom"].forEach(id=>document.getElementById(id).value="")}
+function clearItem(){["itemCode","itemName","itemUom","itemCost"].forEach(id=>document.getElementById(id).value="")}
 function renderItems(){
- let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th><th></th></tr>";
- Object.entries(state.items).forEach(([id,x])=>h+=`<tr><td>${esc(id)}</td><td>${esc(x.name)}</td><td><span class='badge'>${esc(x.type)}</span></td><td>${esc(x.uom)}</td><td><button class="btn red" onclick="deleteItem('${id}')">Delete</button></td></tr>`);
+ let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th><th>Cost/Unit</th><th></th></tr>";
+ Object.entries(state.items).forEach(([id,x])=>{
+  const c=x.type==="CS"?csUnitCost(id):Number(x.cost)||0;
+  const costLabel=x.type==="FG"?"—":("₹"+c.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})+(x.type==="CS"?" (auto)":""));
+  h+=`<tr><td>${esc(id)}</td><td>${esc(x.name)}</td><td><span class='badge'>${esc(x.type)}</span></td><td>${esc(x.uom)}</td><td>${costLabel}</td><td><button class="btn red" onclick="deleteItem('${id}')">Delete</button></td></tr>`;
+ });
  h+="</table></div>";document.getElementById("itemTable").innerHTML=h;
 }
 const TYPE_OPTIONS=["RM","CS","FG","PKG"];
 function renderAdminItems(){
  const el=document.getElementById("adminItemTable");if(!el)return;
  if(!Object.keys(state.items).length){el.innerHTML="<div class='empty'>No items yet.</div>";return}
- let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th><th></th></tr>";
+ let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th><th>Cost/Unit</th><th></th></tr>";
  Object.entries(state.items).forEach(([id,x])=>{
+  const editable=x.type==="RM"||x.type==="PKG";
+  const costVal=editable?(Number(x.cost)||0):(x.type==="CS"?csUnitCost(id).toFixed(2):"");
   h+=`<tr>
   <td>${esc(id)}</td>
   <td><input data-item="${esc(id)}" data-field="name" value="${esc(x.name)}"></td>
   <td><select data-item="${esc(id)}" data-field="type">${TYPE_OPTIONS.map(t=>`<option value="${t}" ${t===x.type?"selected":""}>${t}</option>`).join("")}</select></td>
   <td><input data-item="${esc(id)}" data-field="uom" value="${esc(x.uom)}"></td>
+  <td><input data-item="${esc(id)}" data-field="cost" type="number" step=".01" value="${costVal}" ${editable?"":"disabled placeholder='Auto'"} style="${editable?"":"background:#f3f4f6"}"></td>
   <td><button class="btn green" onclick="saveItemEdit('${esc(id)}')">Save</button></td>
   </tr>`;
  });
@@ -287,9 +318,11 @@ function saveItemEdit(id){
  const name=document.querySelector(`[data-item="${id}"][data-field="name"]`).value.trim();
  const type=document.querySelector(`[data-item="${id}"][data-field="type"]`).value;
  const uom=document.querySelector(`[data-item="${id}"][data-field="uom"]`).value.trim();
+ const costInput=document.querySelector(`[data-item="${id}"][data-field="cost"]`);
+ const cost=(type==="RM"||type==="PKG")?(Number(costInput.value)||0):(state.items[id]?.cost||0);
  if(!name||!uom){toast("Name and UOM can't be empty.");return}
  if(!checkPassword("save changes to this item"))return;
- state.items[id]={name,type,uom};
+ state.items[id]={name,type,uom,cost};
  if(type==="FG"&&!state.boms[id])state.boms[id]={output:1,uom,rows:[]};
  if(type==="CS"&&!state.csBoms[id])state.csBoms[id]={output:1,uom,rows:[]};
  saveLocal();refreshSelects();renderItems();renderAdminItems();renderBomEditor();renderCsEditor();
@@ -301,6 +334,86 @@ function deleteItem(id){
  delete state.items[id];delete state.boms[id];delete state.csBoms[id];
  saveLocal();refreshSelects();renderItems();renderBomEditor();renderCsEditor();renderAdminItems();toast("Item deleted.");
 }
+function downloadCSV(csv,filename){
+ const blob=new Blob([csv],{type:"text/csv"});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+function csvEscape(v){
+ v=String(v??"");
+ if(v.includes(",")||v.includes('"')||v.includes("\n"))return '"'+v.replace(/"/g,'""')+'"';
+ return v;
+}
+function downloadTemplateCSV(){
+ const csv="ITEM CODE,ITEM NAME,ITEM TYPE,UOM,COST\nRM010,Chocolate Chips,RM,kg,450\n";
+ downloadCSV(csv,"ckbom_items_template.csv");
+}
+function exportItemsCSV(){
+ let csv="ITEM CODE,ITEM NAME,ITEM TYPE,UOM,COST\n";
+ Object.entries(state.items).forEach(([id,x])=>{
+  const cost=x.type==="CS"?csUnitCost(id).toFixed(2):(x.type==="FG"?"":(Number(x.cost)||0));
+  csv+=`${csvEscape(id)},${csvEscape(x.name)},${csvEscape(x.type)},${csvEscape(x.uom)},${csvEscape(cost)}\n`;
+ });
+ downloadCSV(csv,"ckbom_items_export.csv");
+}
+function splitCsvLine(line){
+ const res=[];let cur="";let inQuotes=false;
+ for(let i=0;i<line.length;i++){
+  const c=line[i];
+  if(inQuotes){
+   if(c==='"'){if(line[i+1]==='"'){cur+='"';i++}else inQuotes=false}
+   else cur+=c;
+  }else{
+   if(c===','){res.push(cur);cur=""}
+   else if(c==='"')inQuotes=true;
+   else cur+=c;
+  }
+ }
+ res.push(cur);return res;
+}
+function parseCSV(text){
+ const lines=text.split(/\r?\n/).filter(l=>l.trim().length);
+ if(!lines.length)return[];
+ const headers=splitCsvLine(lines[0]).map(h=>h.trim().toUpperCase());
+ const out=[];
+ for(let i=1;i<lines.length;i++){
+  const cols=splitCsvLine(lines[i]);const obj={};
+  headers.forEach((h,idx)=>obj[h]=cols[idx]!==undefined?cols[idx].trim():"");
+  out.push(obj);
+ }
+ return out;
+}
+function importItemsCSV(){
+ const fileInput=document.getElementById("importCsvFile");
+ const file=fileInput.files[0];
+ if(!file){toast("Choose a CSV file first.");return}
+ if(!checkPassword("import items from this CSV file"))return;
+ const reader=new FileReader();
+ reader.onload=e=>{
+  try{
+   const rows=parseCSV(e.target.result);
+   if(!rows.length){toast("No data found in that file.");return}
+   let added=0,updated=0,skipped=0;
+   rows.forEach(row=>{
+    const id=(row["ITEM CODE"]||"").trim();
+    const name=(row["ITEM NAME"]||"").trim();
+    let type=(row["ITEM TYPE"]||"").trim().toUpperCase();
+    const uom=(row["UOM"]||"").trim();
+    const cost=Number(row["COST"]||0)||0;
+    if(!id||!name||!uom){skipped++;return}
+    if(!TYPE_OPTIONS.includes(type))type="RM";
+    if(state.items[id])updated++;else added++;
+    state.items[id]={name,type,uom,cost};
+    if(type==="FG"&&!state.boms[id])state.boms[id]={output:1,uom,rows:[]};
+    if(type==="CS"&&!state.csBoms[id])state.csBoms[id]={output:1,uom,rows:[]};
+   });
+   saveLocal();refreshSelects();renderItems();renderAdminItems();renderBomEditor();renderCsEditor();
+   toast(`Import done: ${added} added, ${updated} updated${skipped?`, ${skipped} skipped (missing data)`:""}.`);
+   fileInput.value="";
+  }catch(err){console.error(err);toast("Could not read that file — make sure it matches the template format.")}
+ };
+ reader.readAsText(file);
+}
 function itemOptions(allowed){
  return Object.entries(state.items).filter(([id,x])=>allowed.includes(x.type)).map(([id,x])=>`<option value="${id}">${esc(id)} — ${esc(x.name)}</option>`).join("");
 }
@@ -311,16 +424,24 @@ function renderBomEditor(){
 }
 function drawBomRows(){
  if(!bomRows.length){document.getElementById("bomEditor").innerHTML="<div class='empty'>No components yet. Click Add Component.</div>";return}
- let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>COMPONENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST</div><div></div></div>";
- bomRows.forEach((r,i)=>{const x=state.items[r.item]||{};h+=`<div class='bom-row'>
+ let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>COMPONENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
+ bomRows.forEach((r,i)=>{
+  const x=state.items[r.item]||{};
+  const rowCost=itemUnitCost(r.item)*(r.qty||0);
+  r.cost=rowCost;
+  h+=`<div class='bom-row'>
  <select onchange="bomRows[${i}].item=this.value;drawBomRows()">${itemOptions(["RM","CS","PKG"])}</select>
  <input value="${esc(x.uom||"")}" readonly>
- <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="bomRows[${i}].netQty=Number(this.value)">
- <input type="number" step=".001" value="${r.qty??0}" onchange="bomRows[${i}].qty=Number(this.value)">
- <input type="number" step=".01" value="${r.cost??0}" onchange="bomRows[${i}].cost=Number(this.value)">
+ <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="bomRows[${i}].netQty=Number(this.value);updateBomCost(${i})">
+ <input type="number" step=".001" value="${r.qty??0}" onchange="bomRows[${i}].qty=Number(this.value);updateBomCost(${i})">
+ <input id="bomCost_${i}" type="number" step=".01" value="${rowCost.toFixed(2)}" readonly style="background:#f3f4f6">
  <button class="btn red" onclick="deleteBomRow(${i})">✕</button></div>`});
  document.getElementById("bomEditor").innerHTML=h;
  bomRows.forEach((r,i)=>{const sels=document.querySelectorAll("#bomEditor select");if(sels[i])sels[i].value=r.item});
+}
+function updateBomCost(i){
+ const r=bomRows[i];const c=itemUnitCost(r.item)*(r.qty||0);r.cost=c;
+ const el=document.getElementById("bomCost_"+i);if(el)el.value=c.toFixed(2);
 }
 function addBomRow(){bomRows.push({item:Object.keys(state.items).find(id=>["RM","CS","PKG"].includes(state.items[id].type))||"",qty:0,netQty:0,cost:0});drawBomRows()}
 function deleteBomRow(i){
@@ -345,15 +466,23 @@ function renderCsEditor(){
 }
 function drawCsRows(){
  if(!csRows.length){document.getElementById("csEditor").innerHTML="<div class='empty'>No CS ingredients yet. Click Add Ingredient.</div>";return}
- let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>INGREDIENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST</div><div></div></div>";
- csRows.forEach((r,i)=>{const x=state.items[r.item]||{};h+=`<div class='bom-row'>
+ let h="<div class='bom-row' style='font-weight:bold;font-size:11px'><div>INGREDIENT</div><div>UOM</div><div>NET QTY</div><div>RM QTY</div><div>COST (auto)</div><div></div></div>";
+ csRows.forEach((r,i)=>{
+  const x=state.items[r.item]||{};
+  const rowCost=itemUnitCost(r.item)*(r.qty||0);
+  r.cost=rowCost;
+  h+=`<div class='bom-row'>
  <select onchange="csRows[${i}].item=this.value;drawCsRows()">${itemOptions(["RM","PKG"])}</select>
  <input value="${esc(x.uom||"")}" readonly>
- <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="csRows[${i}].netQty=Number(this.value)">
- <input type="number" step=".001" value="${r.qty??0}" onchange="csRows[${i}].qty=Number(this.value)">
- <input type="number" step=".01" value="${r.cost??0}" onchange="csRows[${i}].cost=Number(this.value)">
+ <input type="number" step=".001" value="${r.netQty??r.qty??0}" onchange="csRows[${i}].netQty=Number(this.value);updateCsCost(${i})">
+ <input type="number" step=".001" value="${r.qty??0}" onchange="csRows[${i}].qty=Number(this.value);updateCsCost(${i})">
+ <input id="csCost_${i}" type="number" step=".01" value="${rowCost.toFixed(2)}" readonly style="background:#f3f4f6">
  <button class="btn red" onclick="deleteCsRow(${i})">✕</button></div>`});
  document.getElementById("csEditor").innerHTML=h;csRows.forEach((r,i)=>{const sels=document.querySelectorAll("#csEditor select");if(sels[i])sels[i].value=r.item});
+}
+function updateCsCost(i){
+ const r=csRows[i];const c=itemUnitCost(r.item)*(r.qty||0);r.cost=c;
+ const el=document.getElementById("csCost_"+i);if(el)el.value=c.toFixed(2);
 }
 function addCsRow(){csRows.push({item:Object.keys(state.items).find(id=>state.items[id].type==="RM")||"",qty:0,netQty:0,cost:0});drawCsRows()}
 function deleteCsRow(i){
@@ -392,11 +521,16 @@ function generate(){
  const fg=state.items[id],b=state.boms[id];if(!b){toast("BOM not found.");return}
  const flat=[],csSections=[];
  b.rows.forEach(r=>{
-  const x=state.items[r.item];const factor=q/b.output;const req=(r.qty||0)*factor;const cost=(r.cost||0)*factor;
+  const x=state.items[r.item];const factor=q/b.output;const req=(r.qty||0)*factor;
+  const unitCost=itemUnitCost(r.item);const cost=unitCost*req;
   if(x&&x.type==="CS"){
    flat.push({item:r.item,name:x.name,type:"CS",uom:x.uom,qty:req,cost});
    const cb=state.csBoms[r.item];if(cb){
-    const factorCS=req/cb.output;const rows=cb.rows.map(cr=>({item:cr.item,name:state.items[cr.item]?.name||cr.item,uom:state.items[cr.item]?.uom||"",qty:(cr.qty||0)*factorCS,cost:(cr.cost||0)*factorCS}));
+    const factorCS=req/cb.output;
+    const rows=cb.rows.map(cr=>{
+     const cqty=(cr.qty||0)*factorCS;const cunit=itemUnitCost(cr.item);
+     return {item:cr.item,name:state.items[cr.item]?.name||cr.item,uom:state.items[cr.item]?.uom||"",qty:cqty,cost:cunit*cqty};
+    });
     csSections.push({name:x.name,qty:req,uom:x.uom,rows});
    }
   }else flat.push({item:r.item,name:x?.name||r.item,type:x?.type||"",uom:x?.uom||"",qty:req,cost});
@@ -411,8 +545,9 @@ function generate(){
  document.getElementById("productionResult").innerHTML=h;
 }
 function makeTable(rows,showType){
- let h="<div class='tablewrap'><table><tr><th>#</th><th>ITEM / INGREDIENT</th>"+(showType?"<th>TYPE</th>":"")+"<th>UOM</th><th>REQUIRED QTY</th><th>COST</th></tr>";
- rows.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td>${esc(r.name)}</td>${showType?`<td><span class='badge'>${esc(r.type)}</span></td>`:""}<td>${esc(r.uom)}</td><td class='num'><b>${fmt(r.qty)}</b></td><td class='num'>₹${Number(r.cost||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`);
+ const widths=showType?["6%","30%","12%","10%","20%","22%"]:["6%","38%","12%","22%","22%"];
+ let h="<div class='tablewrap'><table><colgroup>"+widths.map(w=>`<col style="width:${w}">`).join("")+"</colgroup><tr><th>#</th><th style='text-align:left'>ITEM / INGREDIENT</th>"+(showType?"<th>TYPE</th>":"")+"<th>UOM</th><th>REQUIRED QTY</th><th>COST</th></tr>";
+ rows.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td style="text-align:left">${esc(r.name)}</td>${showType?`<td><span class='badge'>${esc(r.type)}</span></td>`:""}<td>${esc(r.uom)}</td><td class='num'><b>${fmt(r.qty)}</b></td><td class='num'>₹${Number(r.cost||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`);
  h+="</table></div>";return h;
 }
 function fmt(n){return Number(n).toLocaleString("en-IN",{minimumFractionDigits:3,maximumFractionDigits:3})}

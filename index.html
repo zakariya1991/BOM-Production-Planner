@@ -161,6 +161,9 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <div class="toast" id="toast"></div>
 
 <script>
+/* =========================
+   DATA
+   ========================= */
 const state={
  items:{
   RM001:{name:"Thick Curd (Lassi)",type:"RM",uom:"kg",cost:67.03},
@@ -170,12 +173,14 @@ const state={
   CS001:{name:"CS - Mango Lassi",type:"CS",uom:"kg",cost:0},
   FG001:{name:"Mango Lassi",type:"FG",uom:"pcs",cost:0}
  },
+ /* Finished SKU BOM. qty is per standard output. */
  boms:{
   FG001:{output:1,uom:"pcs",rows:[
    {item:"CS001",qty:.300,netQty:.300,cost:43.74},
    {item:"PKG001",qty:1,netQty:1,cost:7.99}
   ]}
  },
+ /* CS BOM. qty is per 1 kg CS output. */
  csBoms:{
   CS001:{output:1,uom:"kg",rows:[
    {item:"RM001",qty:.526,netQty:.526,cost:35.26},
@@ -185,13 +190,16 @@ const state={
  }
 };
 let bomRows=[],csRows=[],generated=null;
-let APP_PASSWORD="ckbom123";
+let APP_PASSWORD="ckbom123"; // starting/default password — change it from the Admin tab in the app instead of editing this file
 function checkPassword(actionLabel){
  const p=prompt(`Enter password to ${actionLabel||"continue"}:`);
  if(p===null)return false;
  if(p!==APP_PASSWORD){alert("Incorrect password. Action cancelled.");return false}
  return true;
 }
+// Cost of ONE unit (per UOM) of any item. For RM/PKG this is whatever was entered
+// in Item Master. For CS it's automatically derived from its own saved sub-recipe
+// (sum of ingredient costs, divided by the CS's standard output) — never manual.
 function itemUnitCost(id){
  const it=state.items[id];if(!it)return 0;
  if(it.type==="CS")return csUnitCost(id);
@@ -203,6 +211,11 @@ function csUnitCost(csId){
  return total/(cb.output||1);
 }
 
+/* =========================
+   FIREBASE CONFIG
+   Replace the values below with the config from your own
+   Firebase project (Project settings > General > Your apps).
+   ========================= */
 const firebaseConfig={
  apiKey:"AIzaSyDYSamSH5v9VUMHp6zLaniHZ0lNaBxi0Gk",
  authDomain:"ckbom-9898.firebaseapp.com",
@@ -251,6 +264,7 @@ function listenRemote(){
  stateRef.on("value",snap=>{
   const x=snap.val();
   if(!x){
+   // nothing in the database yet — seed it with the current (starter) state
    stateRef.set(state);
    return;
   }

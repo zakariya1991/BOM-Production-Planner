@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Central Kitchen BOM & Production Planner</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14532d">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f4f6f8;color:#000}
 .topbar{position:sticky;top:0;z-index:10;box-shadow:0 1px 3px rgba(0,0,0,.08)}
@@ -30,12 +33,35 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 @media print{nav,header,.topbar,.screenhide{display:none!important}main{margin:0;padding:0}.page{display:none!important}#production.active{display:block!important}.card{border:0;box-shadow:none}table{table-layout:fixed}th,td{padding:4px;font-size:10px;color:#000!important}#productionResult,#productionResult *{color:#000!important}}
 .syncbar{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:12px;text-align:center;color:#fff;z-index:50;display:none}
 .syncbar.online{background:#166534}.syncbar.offline{background:#991b1b}
+.authGate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.authBox{background:#fff;border:1px solid #d9dee3;border-radius:12px;padding:28px;max-width:380px;width:100%}
+.authBox h2{margin-top:0}
+.authError{background:#fee2e2;color:#991b1b;padding:10px;border-radius:7px;font-size:13px;margin-top:10px;display:none}
+.authMsg{background:#eef7f1;color:#166534;padding:10px;border-radius:7px;font-size:13px;margin-top:10px;display:none}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 </head>
 <body>
 <div class="syncbar" id="syncbar"></div>
+
+<div id="authGate" class="authGate">
+<div class="authBox">
+<h2>Central Kitchen BOM Planner</h2>
+<p class="muted">Log in with your email to access this app. Only emails approved by the admin can use it.</p>
+<label>EMAIL</label><input id="authEmail" type="email" placeholder="you@company.com">
+<label style="margin-top:10px">PASSWORD</label><input id="authPassword" type="password" placeholder="Password (min 6 characters)">
+<div class="actions" style="margin-top:14px">
+<button class="btn green" onclick="doLogin()">LOG IN</button>
+<button class="btn gray" onclick="doSignup()">CREATE ACCOUNT</button>
+</div>
+<div id="authError" class="authError"></div>
+<div id="authMsg" class="authMsg"></div>
+</div>
+</div>
+
+<div id="appRoot" style="display:none">
 <div class="topbar">
 <header>
 <h1>Central Kitchen — BOM & Production Planner</h1>
@@ -48,6 +74,7 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <button onclick="showPage('bom',this)">BOM Master</button>
 <button onclick="showPage('cs',this)">CS / Sub-Recipe</button>
 <button onclick="showPage('admin',this)">Admin</button>
+<button class="btn red" style="margin-left:auto" onclick="doLogout()">Logout</button>
 </nav>
 </div>
 
@@ -155,10 +182,20 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <div class="actions" style="align-items:end"><button class="btn green" onclick="importItemsCSV()">IMPORT CSV</button></div>
 </div>
 </div>
+<div class="card" id="accessControlCard" style="display:none">
+<h2>Manage Access (Super Admin only)</h2>
+<p class="muted">Only people whose email is listed here (or the super admin) can log in and use this app. Add the exact email each person will sign in with.</p>
+<div class="grid" style="grid-template-columns:2fr 1fr">
+<div><label>EMAIL TO ALLOW</label><input id="newAllowedEmail" type="email" placeholder="teammate@company.com"></div>
+<div class="actions" style="align-items:end"><button class="btn green" onclick="addAllowedEmail()">GRANT ACCESS</button></div>
+</div>
+<div id="allowedEmailsTable" style="margin-top:14px"></div>
+</div>
 </section>
 </main>
 
 <div class="toast" id="toast"></div>
+</div>
 
 <script>
 /* =========================
@@ -227,9 +264,95 @@ const firebaseConfig={
 };
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
+const auth=firebase.auth();
 const stateRef=db.ref("ckBomState");
 const settingsRef=db.ref("ckBomSettings");
+const allowedRef=db.ref("ckBomAllowedUsers");
 let applyingRemote=false;
+let currentUserEmail=null;
+let appInitialized=false;
+const SUPER_ADMIN_EMAIL="zakariya@ristarafoods.com";
+
+function emailKey(email){return String(email||"").toLowerCase().trim().replace(/[.#$\[\]]/g,"_")}
+function isSuperAdmin(email){return String(email||"").toLowerCase().trim()===SUPER_ADMIN_EMAIL}
+
+function showAuthGate(msg,isError){
+ document.getElementById("authGate").style.display="flex";
+ document.getElementById("appRoot").style.display="none";
+ const errEl=document.getElementById("authError"),msgEl=document.getElementById("authMsg");
+ errEl.style.display="none";msgEl.style.display="none";
+ if(msg){
+  if(isError){errEl.textContent=msg;errEl.style.display="block"}
+  else{msgEl.textContent=msg;msgEl.style.display="block"}
+ }
+}
+function hideAuthGate(){
+ document.getElementById("authGate").style.display="none";
+ document.getElementById("appRoot").style.display="block";
+}
+function doLogin(){
+ const email=document.getElementById("authEmail").value.trim();
+ const pass=document.getElementById("authPassword").value;
+ if(!email||!pass){showAuthGate("Enter your email and password.",true);return}
+ auth.signInWithEmailAndPassword(email,pass).catch(err=>showAuthGate(err.message,true));
+}
+function doSignup(){
+ const email=document.getElementById("authEmail").value.trim();
+ const pass=document.getElementById("authPassword").value;
+ if(!email||!pass||pass.length<6){showAuthGate("Enter a valid email and a password of at least 6 characters.",true);return}
+ auth.createUserWithEmailAndPassword(email,pass).catch(err=>showAuthGate(err.message,true));
+}
+function doLogout(){
+ auth.signOut();
+}
+function checkAccess(email){
+ if(isSuperAdmin(email))return Promise.resolve(true);
+ return allowedRef.child(emailKey(email)).once("value").then(snap=>!!snap.val());
+}
+auth.onAuthStateChanged(async user=>{
+ if(!user){appInitialized=false;showAuthGate();return}
+ const email=user.email;
+ const allowed=await checkAccess(email).catch(()=>false);
+ if(!allowed){
+  showAuthGate("This email isn't authorized yet. Contact the admin to request access, then try logging in again.",true);
+  auth.signOut();
+  return;
+ }
+ currentUserEmail=email;
+ hideAuthGate();
+ document.getElementById("accessControlCard").style.display=isSuperAdmin(email)?"block":"none";
+ if(!appInitialized){appInitialized=true;init();listenAllowedUsers()}
+});
+function renderAllowedUsers(list){
+ const el=document.getElementById("allowedEmailsTable");if(!el)return;
+ let h=`<div class='tablewrap'><table><tr><th>Email</th><th></th></tr><tr><td>${esc(SUPER_ADMIN_EMAIL)} (super admin)</td><td>—</td></tr>`;
+ list.forEach(({key,email})=>{
+  h+=`<tr><td>${esc(email)}</td><td><button class="btn red" onclick="removeAllowedEmail('${key}')">Remove</button></td></tr>`;
+ });
+ h+="</table></div>";
+ el.innerHTML=h;
+}
+function listenAllowedUsers(){
+ allowedRef.on("value",snap=>{
+  const val=snap.val()||{};
+  const list=Object.entries(val).map(([key,v])=>({key,email:v.email||key}));
+  renderAllowedUsers(list);
+ });
+}
+function addAllowedEmail(){
+ const email=document.getElementById("newAllowedEmail").value.trim().toLowerCase();
+ if(!email||!email.includes("@")){toast("Enter a valid email.");return}
+ if(isSuperAdmin(email)){toast("That's already the super admin — no need to add it.");return}
+ if(!checkPassword("grant access to this email"))return;
+ allowedRef.child(emailKey(email)).set({email,addedBy:currentUserEmail,addedAt:new Date().toISOString()}).then(()=>{
+  document.getElementById("newAllowedEmail").value="";
+  toast("Access granted to "+email+".");
+ }).catch(()=>toast("Could not save — check your connection."));
+}
+function removeAllowedEmail(key){
+ if(!checkPassword("remove this person's access"))return;
+ allowedRef.child(key).remove().then(()=>toast("Access removed."));
+}
 
 function listenSettings(){
  settingsRef.on("value",snap=>{
@@ -588,7 +711,11 @@ function makeTable(rows,showType){
 function fmt(n){return Number(n).toLocaleString("en-IN",{minimumFractionDigits:3,maximumFractionDigits:3})}
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",2200)}
-init();
+if("serviceWorker" in navigator){
+ window.addEventListener("load",()=>{
+  navigator.serviceWorker.register("sw.js").catch(err=>console.error("SW registration failed:",err));
+ });
+}
 </script>
 </body>
 </html>

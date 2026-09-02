@@ -556,19 +556,19 @@ function generate(){
  const fg=state.items[id],b=state.boms[id];if(!b){toast("BOM not found.");return}
  const flat=[],csSections=[];
  b.rows.forEach(r=>{
-  const x=state.items[r.item];const factor=q/b.output;const req=(r.qty||0)*factor;
+  const x=state.items[r.item];const factor=q/b.output;const req=(r.qty||0)*factor;const netReq=(r.netQty||0)*factor;
   const unitCost=itemUnitCost(r.item);const cost=unitCost*req;
   if(x&&x.type==="CS"){
-   flat.push({item:r.item,name:x.name,type:"CS",uom:x.uom,qty:req,cost});
+   flat.push({item:r.item,name:x.name,type:"CS",uom:x.uom,netQty:netReq,qty:req,cost});
    const cb=state.csBoms[r.item];if(cb){
     const factorCS=req/cb.output;
     const rows=cb.rows.map(cr=>{
-     const cqty=(cr.qty||0)*factorCS;const cunit=itemUnitCost(cr.item);
-     return {item:cr.item,name:state.items[cr.item]?.name||cr.item,uom:state.items[cr.item]?.uom||"",qty:cqty,cost:cunit*cqty};
+     const cqty=(cr.qty||0)*factorCS;const cnetQty=(cr.netQty||0)*factorCS;const cunit=itemUnitCost(cr.item);
+     return {item:cr.item,name:state.items[cr.item]?.name||cr.item,uom:state.items[cr.item]?.uom||"",netQty:cnetQty,qty:cqty,cost:cunit*cqty};
     });
     csSections.push({name:x.name,qty:req,uom:x.uom,rows});
    }
-  }else flat.push({item:r.item,name:x?.name||r.item,type:x?.type||"",uom:x?.uom||"",qty:req,cost});
+  }else flat.push({item:r.item,name:x?.name||r.item,type:x?.type||"",uom:x?.uom||"",netQty:netReq,qty:req,cost});
  });
  const total=flat.reduce((s,r)=>s+r.cost,0)+csSections.reduce((s,c)=>s+c.rows.reduce((a,r)=>a+r.cost,0),0);
  generated={fg,date,q,flat,csSections,total};
@@ -580,9 +580,9 @@ function generate(){
  document.getElementById("productionResult").innerHTML=h;
 }
 function makeTable(rows,showType){
- const widths=showType?["6%","30%","12%","10%","20%","22%"]:["6%","38%","12%","22%","22%"];
- let h="<div class='tablewrap'><table><colgroup>"+widths.map(w=>`<col style="width:${w}">`).join("")+"</colgroup><tr><th>#</th><th style='text-align:left'>ITEM / INGREDIENT</th>"+(showType?"<th>TYPE</th>":"")+"<th>UOM</th><th>REQUIRED QTY</th><th>COST</th></tr>";
- rows.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td style="text-align:left">${esc(r.name)}</td>${showType?`<td><span class='badge'>${esc(r.type)}</span></td>`:""}<td>${esc(r.uom)}</td><td class='num'><b>${fmt(r.qty)}</b></td><td class='num'>₹${Number(r.cost||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`);
+ const widths=showType?["5%","24%","10%","8%","15%","15%","23%"]:["5%","30%","10%","17%","17%","21%"];
+ let h="<div class='tablewrap'><table><colgroup>"+widths.map(w=>`<col style="width:${w}">`).join("")+"</colgroup><tr><th>#</th><th style='text-align:left'>ITEM / INGREDIENT</th>"+(showType?"<th>TYPE</th>":"")+"<th>UOM</th><th>NET QTY USED</th><th>RM QTY USED</th><th>COST</th></tr>";
+ rows.forEach((r,i)=>h+=`<tr><td>${i+1}</td><td style="text-align:left">${esc(r.name)}</td>${showType?`<td><span class='badge'>${esc(r.type)}</span></td>`:""}<td>${esc(r.uom)}</td><td class='num'>${fmt(r.netQty||0)}</td><td class='num'><b>${fmt(r.qty)}</b></td><td class='num'>₹${Number(r.cost||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`);
  h+="</table></div>";return h;
 }
 function fmt(n){return Number(n).toLocaleString("en-IN",{minimumFractionDigits:3,maximumFractionDigits:3})}

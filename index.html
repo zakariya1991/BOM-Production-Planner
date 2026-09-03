@@ -30,7 +30,7 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 .empty{text-align:center;padding:35px;color:#000}.toast{position:fixed;bottom:18px;right:18px;background:#111827;color:#fff;padding:12px 16px;border-radius:8px;display:none}
 @media(max-width:900px){.grid,.summary{grid-template-columns:1fr 1fr}.item-row,.bom-row{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.grid,.summary{grid-template-columns:1fr}header{padding:15px}main{padding:0 9px}.card{padding:13px}}
-@media print{nav,header,.topbar,.screenhide{display:none!important}main{margin:0;padding:0}.page{display:none!important}#production.active{display:block!important}.card{border:0;box-shadow:none}table{table-layout:fixed}th,td{padding:4px;font-size:10px;color:#000!important}#productionResult,#productionResult *{color:#000!important}}
+@media print{nav,header,.topbar,.screenhide,.summary{display:none!important}main{margin:0;padding:0}.page{display:none!important}#production.active{display:block!important}.card{border:0;box-shadow:none;padding:4px}table{table-layout:fixed}th,td{padding:3px;font-size:9.5px;color:#000!important}#productionResult,#productionResult *{color:#000!important}#printTitle div{margin-bottom:4px!important}#printTitle h2{font-size:16px!important;margin:0 0 2px!important}#printTitle p{margin:0!important;font-size:11px!important}#productionResult h3{font-size:12px!important;margin:6px 0 3px!important}.subbox{padding:6px!important;margin:6px 0!important}}
 .syncbar{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:12px;text-align:center;color:#fff;z-index:50;display:none}
 .syncbar.online{background:#166534}.syncbar.offline{background:#991b1b}
 .authGate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -69,11 +69,11 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 </header>
 
 <nav>
-<button class="active" onclick="showPage('production',this)">Production Plan</button>
-<button onclick="showPage('items',this)">Item Master</button>
-<button onclick="showPage('bom',this)">BOM Master</button>
-<button onclick="showPage('cs',this)">CS / Sub-Recipe</button>
-<button onclick="showPage('admin',this)">Admin</button>
+<button class="active" data-page="production" onclick="showPage('production',this)">Production Plan</button>
+<button data-page="items" onclick="showPage('items',this)">Item Master</button>
+<button data-page="bom" onclick="showPage('bom',this)">BOM Master</button>
+<button data-page="cs" onclick="showPage('cs',this)">CS / Sub-Recipe</button>
+<button data-page="admin" onclick="showPage('admin',this)">Admin</button>
 <button class="btn red" style="margin-left:auto" onclick="doLogout()">Logout</button>
 </nav>
 </div>
@@ -168,6 +168,7 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <div class="card">
 <h2>Edit Items</h2>
 <p class="muted">Fix spelling mistakes or update the name, type or UOM of any existing item. The item code itself cannot be changed here — delete and re-add if the code is wrong.</p>
+<input id="adminItemSearch" placeholder="Search by item code or name…" oninput="renderAdminItems()" style="margin-bottom:12px">
 <div id="adminItemTable"></div>
 </div>
 <div class="card">
@@ -184,10 +185,20 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 </div>
 <div class="card" id="accessControlCard" style="display:none">
 <h2>Manage Access (Super Admin only)</h2>
-<p class="muted">Only people whose email is listed here (or the super admin) can log in and use this app. Add the exact email each person will sign in with.</p>
+<p class="muted">Only people whose email is listed here (or the super admin) can log in and use this app. Add the exact email, then tick which sections they're allowed to see and use — they'll only see those tabs.</p>
 <div class="grid" style="grid-template-columns:2fr 1fr">
 <div><label>EMAIL TO ALLOW</label><input id="newAllowedEmail" type="email" placeholder="teammate@company.com"></div>
 <div class="actions" style="align-items:end"><button class="btn green" onclick="addAllowedEmail()">GRANT ACCESS</button></div>
+</div>
+<div style="margin-top:12px">
+<label>ALLOWED SECTIONS</label>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;margin-bottom:0"><input type="checkbox" id="permProduction" style="width:auto">Production Plan</label>
+<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;margin-bottom:0"><input type="checkbox" id="permItems" style="width:auto">Item Master</label>
+<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;margin-bottom:0"><input type="checkbox" id="permBom" style="width:auto">BOM Master</label>
+<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;margin-bottom:0"><input type="checkbox" id="permCs" style="width:auto">CS / Sub-Recipe</label>
+<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;margin-bottom:0"><input type="checkbox" id="permAdmin" style="width:auto">Admin</label>
+</div>
 </div>
 <div id="allowedEmailsTable" style="margin-top:14px"></div>
 </div>
@@ -306,14 +317,35 @@ function doLogout(){
  auth.signOut();
 }
 function checkAccess(email){
- if(isSuperAdmin(email))return Promise.resolve(true);
- return allowedRef.child(emailKey(email)).once("value").then(snap=>!!snap.val());
+ if(isSuperAdmin(email))return Promise.resolve({production:true,items:true,bom:true,cs:true,admin:true});
+ return allowedRef.child(emailKey(email)).once("value").then(snap=>{
+  const data=snap.val();
+  if(!data)return null;
+  // pre-existing entries added before permissions existed default to full access
+  return data.permissions||{production:true,items:true,bom:true,cs:true,admin:true};
+ });
+}
+function applyPermissions(perms){
+ document.querySelectorAll("nav button[data-page]").forEach(btn=>{
+  const key=btn.getAttribute("data-page");
+  btn.style.display=perms[key]?"":"none";
+ });
+ const activeBtn=document.querySelector("nav button.active[data-page]");
+ const activeKey=activeBtn?activeBtn.getAttribute("data-page"):null;
+ if(!activeKey||!perms[activeKey]){
+  const order=["production","items","bom","cs","admin"];
+  const firstAllowed=order.find(k=>perms[k]);
+  if(firstAllowed){
+   const btn=document.querySelector(`nav button[data-page="${firstAllowed}"]`);
+   if(btn)showPage(firstAllowed,btn);
+  }
+ }
 }
 auth.onAuthStateChanged(async user=>{
  if(!user){appInitialized=false;showAuthGate();return}
  const email=user.email;
- const allowed=await checkAccess(email).catch(()=>false);
- if(!allowed){
+ const perms=await checkAccess(email).catch(()=>null);
+ if(!perms){
   showAuthGate("This email isn't authorized yet. Contact the admin to request access, then try logging in again.",true);
   auth.signOut();
   return;
@@ -321,13 +353,17 @@ auth.onAuthStateChanged(async user=>{
  currentUserEmail=email;
  hideAuthGate();
  document.getElementById("accessControlCard").style.display=isSuperAdmin(email)?"block":"none";
+ applyPermissions(perms);
  if(!appInitialized){appInitialized=true;init();listenAllowedUsers()}
 });
 function renderAllowedUsers(list){
  const el=document.getElementById("allowedEmailsTable");if(!el)return;
- let h=`<div class='tablewrap'><table><tr><th>Email</th><th></th></tr><tr><td>${esc(SUPER_ADMIN_EMAIL)} (super admin)</td><td>—</td></tr>`;
- list.forEach(({key,email})=>{
-  h+=`<tr><td>${esc(email)}</td><td><button class="btn red" onclick="removeAllowedEmail('${key}')">Remove</button></td></tr>`;
+ const labels={production:"Production",items:"Items",bom:"BOM",cs:"CS",admin:"Admin"};
+ let h=`<div class='tablewrap'><table><tr><th>Email</th><th>Access</th><th></th></tr><tr><td>${esc(SUPER_ADMIN_EMAIL)} (super admin)</td><td>All</td><td>—</td></tr>`;
+ list.forEach(({key,email,permissions})=>{
+  const p=permissions||{};
+  const granted=Object.keys(labels).filter(k=>p[k]).map(k=>labels[k]).join(", ")||"None";
+  h+=`<tr><td>${esc(email)}</td><td>${esc(granted)}</td><td><button class="btn red" onclick="removeAllowedEmail('${key}')">Remove</button></td></tr>`;
  });
  h+="</table></div>";
  el.innerHTML=h;
@@ -335,7 +371,7 @@ function renderAllowedUsers(list){
 function listenAllowedUsers(){
  allowedRef.on("value",snap=>{
   const val=snap.val()||{};
-  const list=Object.entries(val).map(([key,v])=>({key,email:v.email||key}));
+  const list=Object.entries(val).map(([key,v])=>({key,email:v.email||key,permissions:v.permissions}));
   renderAllowedUsers(list);
  });
 }
@@ -343,9 +379,18 @@ function addAllowedEmail(){
  const email=document.getElementById("newAllowedEmail").value.trim().toLowerCase();
  if(!email||!email.includes("@")){toast("Enter a valid email.");return}
  if(isSuperAdmin(email)){toast("That's already the super admin — no need to add it.");return}
+ const perms={
+  production:document.getElementById("permProduction").checked,
+  items:document.getElementById("permItems").checked,
+  bom:document.getElementById("permBom").checked,
+  cs:document.getElementById("permCs").checked,
+  admin:document.getElementById("permAdmin").checked
+ };
+ if(!Object.values(perms).some(Boolean)){toast("Tick at least one section to give access to.");return}
  if(!checkPassword("grant access to this email"))return;
- allowedRef.child(emailKey(email)).set({email,addedBy:currentUserEmail,addedAt:new Date().toISOString()}).then(()=>{
+ allowedRef.child(emailKey(email)).set({email,permissions:perms,addedBy:currentUserEmail,addedAt:new Date().toISOString()}).then(()=>{
   document.getElementById("newAllowedEmail").value="";
+  ["permProduction","permItems","permBom","permCs","permAdmin"].forEach(id=>document.getElementById(id).checked=false);
   toast("Access granted to "+email+".");
  }).catch(()=>toast("Could not save — check your connection."));
 }
@@ -436,8 +481,12 @@ const TYPE_OPTIONS=["RM","CS","FG","PKG"];
 function renderAdminItems(){
  const el=document.getElementById("adminItemTable");if(!el)return;
  if(!Object.keys(state.items).length){el.innerHTML="<div class='empty'>No items yet.</div>";return}
+ const searchEl=document.getElementById("adminItemSearch");
+ const q=(searchEl?searchEl.value:"").trim().toLowerCase();
+ const entries=Object.entries(state.items).filter(([id,x])=>!q||id.toLowerCase().includes(q)||x.name.toLowerCase().includes(q));
+ if(!entries.length){el.innerHTML="<div class='empty'>No items match your search.</div>";return}
  let h="<div class='tablewrap'><table><tr><th>Code</th><th>Item Name</th><th>Type</th><th>UOM</th><th>Cost/Unit</th><th></th></tr>";
- Object.entries(state.items).forEach(([id,x])=>{
+ entries.forEach(([id,x])=>{
   const editable=x.type==="RM"||x.type==="PKG";
   const costVal=editable?(Number(x.cost)||0):(x.type==="CS"?csUnitCost(id).toFixed(2):"");
   h+=`<tr>

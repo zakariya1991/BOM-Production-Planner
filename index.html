@@ -83,7 +83,11 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <div class="card screenhide">
 <h2>Production Plan</h2>
 <div class="grid">
-<div><label>FINISHED SKU</label><select id="prodSku"></select></div>
+<div><label>FINISHED SKU</label>
+<input list="prodSkuDatalist" id="prodSkuSearch" placeholder="Type to search SKU…" oninput="onProdSkuInput(this.value)">
+<datalist id="prodSkuDatalist"></datalist>
+<select id="prodSku" style="display:none"></select>
+</div>
 <div><label>PRODUCTION QTY</label><input id="prodQty" type="number" min="0" step=".001" placeholder="Example: 90"></div>
 <div><label>PRODUCTION DATE</label><input id="prodDate" type="date"></div>
 <div class="actions"><button class="btn green" onclick="generate()">GENERATE BOM</button><button class="btn gray" onclick="window.print()">PRINT / PDF</button><button class="btn gray" onclick="refreshProductionPlan()">REFRESH</button></div>
@@ -124,7 +128,11 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <div class="card">
 <h2>Finished SKU BOM</h2>
 <div class="grid">
-<div><label>SELECT FINISHED SKU</label><select id="bomSku" onchange="renderBomEditor()"></select></div>
+<div><label>SELECT FINISHED SKU</label>
+<input list="bomSkuDatalist" id="bomSkuSearch" placeholder="Type to search SKU…" oninput="onBomSkuInput(this.value)">
+<datalist id="bomSkuDatalist"></datalist>
+<select id="bomSku" style="display:none"></select>
+</div>
 <div><label>STANDARD OUTPUT</label><input id="bomOutput" type="number" value="1" step=".001"></div>
 <div><label>OUTPUT UOM</label><input id="bomOutputUom" value="kg"></div>
 <div class="actions"><button class="btn green" onclick="saveBom()">SAVE BOM</button><button class="btn red" onclick="deleteBom()">DELETE BOM</button></div>
@@ -142,7 +150,11 @@ button{font:inherit}.btn{border:0;border-radius:7px;padding:10px 14px;font-weigh
 <h2>CS — Central Kitchen Sub-Recipe</h2>
 <div class="notice">Create a CS item first in Item Master. Example: <b>CS - Mango Lassi</b>, UOM <b>Kg</b>. Then build its own ingredient BOM here.</div>
 <div class="grid">
-<div><label>SELECT CS</label><select id="csSelect" onchange="renderCsEditor()"></select></div>
+<div><label>SELECT CS</label>
+<input list="csSelectDatalist" id="csSelectSearch" placeholder="Type to search CS…" oninput="onCsSelectInput(this.value)">
+<datalist id="csSelectDatalist"></datalist>
+<select id="csSelect" style="display:none"></select>
+</div>
 <div><label>STANDARD CS OUTPUT</label><input id="csOutput" type="number" value="1" step=".001"></div>
 <div><label>OUTPUT UOM</label><input id="csOutputUom" value="kg"></div>
 <div class="actions"><button class="btn green" onclick="saveCs()">SAVE CS BOM</button><button class="btn red" onclick="deleteCs()">DELETE CS BOM</button></div>
@@ -457,6 +469,34 @@ function refreshSelects(){
   if(x.type==="FG"){fg.add(new Option(`${id} — ${x.name}`,id));bs.add(new Option(`${id} — ${x.name}`,id))}
   if(x.type==="CS")cs.add(new Option(`${id} — ${x.name}`,id));
  });
+ document.getElementById("prodSkuDatalist").innerHTML=itemDatalistOptions(["FG"]);
+ document.getElementById("bomSkuDatalist").innerHTML=itemDatalistOptions(["FG"]);
+ document.getElementById("csSelectDatalist").innerHTML=itemDatalistOptions(["CS"]);
+ syncSkuSearchDisplay("prodSku","prodSkuSearch");
+ syncSkuSearchDisplay("bomSku","bomSkuSearch");
+ syncSkuSearchDisplay("csSelect","csSelectSearch");
+}
+function syncSkuSearchDisplay(selectId,searchId){
+ const sel=document.getElementById(selectId),inp=document.getElementById(searchId);
+ if(!sel||!inp)return;
+ inp.value=(sel.selectedOptions&&sel.selectedOptions.length)?sel.selectedOptions[0].textContent:"";
+}
+function onProdSkuInput(val){
+ const id=val.split(" — ")[0].trim();
+ if(!state.items[id]||state.items[id].type!=="FG")return;
+ document.getElementById("prodSku").value=id;
+}
+function onBomSkuInput(val){
+ const id=val.split(" — ")[0].trim();
+ if(!state.items[id]||state.items[id].type!=="FG")return;
+ document.getElementById("bomSku").value=id;
+ renderBomEditor();
+}
+function onCsSelectInput(val){
+ const id=val.split(" — ")[0].trim();
+ if(!state.items[id]||state.items[id].type!=="CS")return;
+ document.getElementById("csSelect").value=id;
+ renderCsEditor();
 }
 function showPage(id,btn){document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));document.getElementById(id).classList.add("active");document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active"));btn.classList.add("active");if(id==="bom")renderBomEditor();if(id==="cs")renderCsEditor();if(id==="admin")renderAdminItems()}
 function addItem(){
@@ -710,6 +750,7 @@ function deleteCs(){
 }
 function refreshProductionPlan(){
  document.getElementById("prodSku").selectedIndex=0;
+ syncSkuSearchDisplay("prodSku","prodSkuSearch");
  document.getElementById("prodQty").value="";
  document.getElementById("prodDate").value=new Date().toISOString().slice(0,10);
  generated=null;

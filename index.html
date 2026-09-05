@@ -519,11 +519,16 @@ function init(){
 }
 function refreshSelects(){
  const fg=document.getElementById("prodSku"),bs=document.getElementById("bomSku"),cs=document.getElementById("csSelect");
+ const prevFg=fg.value,prevBs=bs.value,prevCs=cs.value;
  fg.innerHTML="";bs.innerHTML="";cs.innerHTML="";
  Object.entries(state.items).forEach(([id,x])=>{
   if(x.type==="FG"){fg.add(new Option(`${id} — ${x.name}`,id));bs.add(new Option(`${id} — ${x.name}`,id))}
   if(x.type==="CS")cs.add(new Option(`${id} — ${x.name}`,id));
  });
+ // keep whatever was already chosen (e.g. after an item edit/sync); otherwise stay blank
+ fg.value=prevFg;if(fg.value!==prevFg)fg.selectedIndex=-1;
+ bs.value=prevBs;if(bs.value!==prevBs)bs.selectedIndex=-1;
+ cs.value=prevCs;if(cs.value!==prevCs)cs.selectedIndex=-1;
  document.getElementById("prodSkuDatalist").innerHTML=itemDatalistOptions(["FG"]);
  document.getElementById("bomSkuDatalist").innerHTML=itemDatalistOptions(["FG"]);
  document.getElementById("csSelectDatalist").innerHTML=itemDatalistOptions(["CS"]);
@@ -804,7 +809,7 @@ function deleteCs(){
  saveLocal();renderCsEditor();toast("CS recipe deleted.");
 }
 function refreshProductionPlan(){
- document.getElementById("prodSku").selectedIndex=0;
+ document.getElementById("prodSku").selectedIndex=-1;
  syncSkuSearchDisplay("prodSku","prodSkuSearch");
  document.getElementById("prodQty").value="";
  document.getElementById("prodDate").value=new Date().toISOString().slice(0,10);
@@ -820,6 +825,7 @@ function refreshProductionPlan(){
 }
 function generate(){
  const id=document.getElementById("prodSku").value,q=Number(document.getElementById("prodQty").value),date=document.getElementById("prodDate").value;
+ if(!id){toast("Select a Finished SKU first.");return}
  if(!q||q<=0){toast("Enter production quantity.");return}
  const fg=state.items[id],b=state.boms[id];if(!b){toast("BOM not found.");return}
  const flat=[],csSections=[];
